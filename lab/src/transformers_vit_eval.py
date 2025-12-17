@@ -1,4 +1,4 @@
-from transformers.models import ViTGraftForImageClassification, ViTImageProcessor
+from transformers.models import ViTRDForImageClassification, ViTImageProcessor
 from torchvision import datasets, transforms
 from tqdm import tqdm
 from thop import profile, clever_format
@@ -40,7 +40,7 @@ def inference(
 ):
     model.eval()
 
-    accu_num = torch.zeros(1).to(device)   # 累计预测正确的样本数
+    accu_num = torch.zeros(1).to(device)
     sample_num = 0
 
     tqdm_loader = tqdm(data_loader, file=sys.stdout)
@@ -95,8 +95,9 @@ def run_eval(args: argparse.Namespace):
     )
 
     # create model
-    model = ViTGraftForImageClassification.from_pretrained(
+    model = ViTRDForImageClassification.from_pretrained(
         pretrained_model_name_or_path=args.pretrained_model_path,
+        ignore_mismatched_sizes=True,
         use_safetensors=args.use_safetensors,
     ).to(device)
     image_processor = ViTImageProcessor.from_pretrained(
@@ -123,24 +124,26 @@ def run_eval(args: argparse.Namespace):
             device=device,
             discard_rate=args.discard_rate,
         )
-
-    # 确保 gpu 和 cpu 同步运行，因为计时由 cpu 负责，避免 cpu 无任务直接返回
     torch.cuda.synchronize()
     os.environ.pop("TOME_R", None)
 
-    # 计算性能指标
     inference_time = time.time() - start_time
     throughput = total_images / inference_time if inference_time > 0 else 0
 
-    # 打印结果
-    print(f"\n--- r={args.tome_r} discard={args.discard_rate} Metrics ---")
+    if args.tome_r > 0:
+        print(f"\n--- ToMe r={args.tome_r} Metrics ---")
+    elif args.discard_rate > 0:
+        print(f"\n--- Discard Rate={args.discard_rate} Metrics ---")
+    elif args.divprune_rate > 0:
+        print(f"\n--- DivPrune Rate={args.divprune_rate} Metrics ---")
+    else:
+        print(f"\n--- Normal Metrics ---")
     print(f"FLOPs: {flops}, Params: {params}")
     print(f"Total images processed: {total_images}")
     print(f"Accuracy: {test_acc*100:.2f}%")
     print(f"Total inference time: {inference_time:.4f} seconds")
     print(f"Throughput: {throughput:.2f} im/s")
 
-    # 保存结果到文件
     if args.results_save_path:
         if not os.path.exists(args.results_save_path):
             os.mkdir(args.results_save_path)
@@ -155,7 +158,15 @@ def run_eval(args: argparse.Namespace):
             "throughput": throughput
         }
 
-        with open(os.path.join(args.results_save_path, f"tome-{args.tome_r}_discard-{args.discard_rate:.1f}.json"), "w") as f:
+        if args.tome_r > 0:
+            file_name = f"tome-{args.tome_r}.json"
+        elif args.discard_rate > 0:
+            file_name = f"discard-{args.discard_rate:.1f}.json"
+        elif args.divprune_rate > 0:
+            file_name = f"divprune-{args.divprune_rate:.1f}.json"
+        else:
+            file_name = f"normal.json"
+        with open(os.path.join(args.results_save_path, file_name), "w") as f:
             json.dump(results, f, indent=4)
 
 def defaultargs():
@@ -175,43 +186,32 @@ def defaultargs():
     parser.add_argument(
         '--pretrained-model-path',
         type=str,
-        default='./checkpoints/vit-graft-base-patch16-224-augreg2_in21k_ft_in1k-sup-6-discard-0.51/checkpoint-80080',
-        # default='/home/jovyan/nas/yrc/model/google/vit-large-patch16-224/',
-        # default='/home/jovyan/nas/yrc/model/google/vit-base-patch16-384/',
+        default='/starry-nas/yrc/model/yeruichen/vit-rd-base-patch16-224.augreg2_in21k_ft_in1k.sup-layerwise1/',
         help='Path to the pretrained model',
     )
     parser.add_argument(
         '--image-processor-path',
         type=str,
-        default='/home/jovyan/nas/yrc/model/transformers/vit_base_patch16_224.augreg2_in21k_ft_in1k/',
+        default='/starry-nas/yrc/model/transformers/vit_base_patch16_224.augreg2_in21k_ft_in1k/',
         help='Path to the image processor',
     )
     parser.add_argument(
         '--dataset-path',
         type=str,
-        default='/home/jovyan/nas/yrc/dataset/imagenet-1k/',
+        default='/starry-nas/yrc/dataset/imagenet-1k/',
         help='Path to the dataset',
     )
     parser.add_argument(
         '--vit-input-size',
         type=int,
         default=224,
-        # default=384,
         help='Input size of the ViT, [224 | 384]',
     )
     parser.add_argument(
         '--results-save-path',
         type=str,
-        default='./workdir/vit-graft-base-patch16-224-augreg2_in21k_ft_in1k-sup-6-discard-0.51.perf',
-        # default='./workdir/vit-large-patch16-224.perf',
-        # default='./workdir/vit-base-patch16-384.perf',
+        default='./workdir/vit-rd-base-patch16-224.augreg2_in21k_ft_in1k.sup-layerwise1-discard-0.5.perf',
         help='Save results to JSON file',
-    )
-    parser.add_argument(
-        '--tome-r',
-        type=int,
-        default=0,
-        help='Token merging\'s hyper-parameter',
     )
     parser.add_argument(
         '--discard-rate',
@@ -220,8 +220,19 @@ def defaultargs():
         help='Token discarding rate',
     )
     parser.add_argument(
+        '--divprune-rate',
+        type=float,
+        default=0.,
+        help='Token diversity pruning rate',
+    )
+    parser.add_argument(
+        '--tome-r',
+        type=int,
+        default=0,
+        help='Token merging\'s hyper-parameter',
+    )
+    parser.add_argument(
         '--use-safetensors',
-        # default=False,
         default=True,
         action='store_true',
         help='Whether to use safetensors',
@@ -232,15 +243,16 @@ def defaultargs():
 if __name__ == "__main__":
     args = defaultargs()
 
-    # for i in np.arange(0, 1.0, 0.1):
-    #     args.tome_r = 0
-    #     args.discard_rate = round(i, 1)
-    #     print(f"------------------discard_rate: {args.discard_rate}------------------")
-    #     run_eval(args)
-
-    for i in range(1, 17):
-        args.tome_r = i
-        args.discard_rate = 0.
-        print(f"------------------tome_r: {args.tome_r}------------------")
+    for i in np.arange(0, 1.0, 0.1):
+        args.tome_r = 0
+        args.discard_rate = round(i, 1)
+        args.divprune_rate = 0
+        print(f"------------------discard_rate: {args.discard_rate}------------------")
         run_eval(args)
+
+    # for i in range(1, 17):
+    #     args.tome_r = i
+    #     args.discard_rate = 0.
+    #     print(f"------------------tome_r: {args.tome_r}------------------")
+    #     run_eval(args)
 

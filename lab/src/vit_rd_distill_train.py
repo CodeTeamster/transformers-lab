@@ -1,5 +1,5 @@
-from distil import GraftDistilTrainer, UnfreezeMode
-from transformers import ViTGraftForImageClassification, ViTGraftConfig
+from distil import ViTRDDistilTrainer, UnfreezeMode
+from transformers import ViTForImageClassification, ViTRDForImageClassification, ViTRDConfig
 from transformers import TrainingArguments, DefaultDataCollator, EarlyStoppingCallback
 from transformers import logging
 from utils import ImageNetDatasetUtils, DatasetFormat
@@ -7,7 +7,6 @@ from utils import ImageNetDatasetUtils, DatasetFormat
 
 import os
 import json
-import timm
 import torch
 import argparse
 
@@ -31,42 +30,22 @@ def run_train(args: argparse.Namespace):
         print(f"[LOAD_DATASET]: train({train_len}) validation({val_len}) batch_size({batch_size})")
 
     for path, lib in args.teacher_model_path.items():
-        if lib == "transformers":
-            teacher = ViTGraftForImageClassification.from_pretrained(
-                path,
-                num_labels=args.num_labels,
-                ignore_mismatched_sizes=True
-            )
-        elif lib == "timm":
-            model_name = os.path.basename(os.path.dirname(path))
-            teacher = timm.create_model(
-                model_name,
-                checkpoint_path=path
-            )
-
-    if args.student_config_path:
-        # training vit from scratch
-        student_config = ViTGraftConfig.from_pretrained(args.student_config_path)
-        student = ViTGraftForImageClassification(student_config)
-        if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-            print(f"[INITIAL_MODEL]: Create a model from the config: {args.student_config_path}")
-    else:
-        assert args.student_model_path, "Either args.student_config_path or args.student_model_path must be provided."
-        student = ViTGraftForImageClassification.from_pretrained(
-            args.student_model_path,
+        teacher = ViTForImageClassification.from_pretrained(
+            path,
             num_labels=args.num_labels,
-            ignore_mismatched_sizes=True
+            ignore_mismatched_sizes=True,
         )
-        if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-            print(f"[INITIAL_MODEL]: Transfer a model from: {args.student_model_path}")
 
+    student_config = ViTRDConfig.from_pretrained(args.student_config_path)
+    student = ViTRDForImageClassification(student_config)
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-        print(f"[TRAIN_START]: device{[torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]}")
+        print(f"[INITIAL_MODEL]: Instantiate a model from the config: {args.student_config_path}")
 
     output_dir = args.ckpt_save_path
     if int(os.environ.get("LOCAL_RANK", 0)) == 0:
         os.makedirs(output_dir, exist_ok=True)
         print(f"[CREATE_SAFE_PATH]: Save checkpoints in: {output_dir}")
+        print(f"[TRAIN_START]: device{[torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())]}")
 
     training_args = TrainingArguments(
         output_dir=output_dir,
@@ -88,15 +67,14 @@ def run_train(args: argparse.Namespace):
         load_best_model_at_end=True,
         metric_for_best_model="accuracy",
         report_to="none",
-        save_total_limit=args.ckpt_history_amount,
+        save_total_limit=args.ckpt_history_amount if args.ckpt_history_amount > 0 else None,
         remove_unused_columns=True,
     )
-    trainer = GraftDistilTrainer(
+    trainer = ViTRDDistilTrainer(
         teacher=teacher,
         student=student,
         unfreeze_mode=UnfreezeMode.ALL,
         layer_num=args.layer_num,
-        train_step=23,
         discard_rate=args.discard_rate,
         discard_before_layers=args.discard_before_layers,
         temperature=args.temperature,
@@ -108,7 +86,7 @@ def run_train(args: argparse.Namespace):
         data_collator=DefaultDataCollator(),
         callbacks=[
             EarlyStoppingCallback(early_stopping_patience=args.earlystop_patience)
-        ],
+        ] if args.earlystop_patience > 0 else None,
     )
     trainer.train(resume_from_checkpoint=args.resume_from_ckpt)
     res = trainer.evaluate()
@@ -135,20 +113,14 @@ def defaultargs():
     parser.add_argument(
         '--teacher-model-path',
         type=json.loads,
-        default='{"/home/jovyan/nas/yrc/model/google/vit-base-patch16-224/": "transformers"}',
+        default='{"/home/jovyan/nas/yrc/model/transformers/vit_base_patch16_224.augreg2_in21k_ft_in1k/": "transformers"}',
         help='Path to the teachers model in Json format'
     )
     parser.add_argument(
         '--student-config-path',
         type=str,
-        default='',
-        help='Path to the student config, if this argument is given, args.student_model_path will be ignored'
-    )
-    parser.add_argument(
-        '--student-model-path',
-        type=str,
-        default='/home/jovyan/nas/yrc/model/yeruichen/vit-graft-base-patch16-224/',
-        help='Path to the student model, either this or args.student_config_path must be selected'
+        default='/home/jovyan/nas/yrc/model/yeruichen/vit-rd-base-patch16-224.augreg2_in21k_ft_in1k.sup-layerwise2/',
+        help='Path to the student config.'
     )
     parser.add_argument(
         '--resume-from-ckpt',

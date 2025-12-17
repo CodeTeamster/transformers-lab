@@ -1,5 +1,5 @@
-from .graft_distill import (
-    GraftDistilTrainer,
+from .vit_rd_distill import (
+    ViTRDDistilTrainer,
     UnfreezeMode,
 )
 

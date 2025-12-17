@@ -4,8 +4,7 @@
 # from src.timm_vit_train import run_train as timm_train, defaultargs as timm_train_defaultargs
 # from src.timm_vit_eval import run_eval as timm_eval, defaultargs as timm_eval_defaultargs
 # from utils import plot_multi_performance, plot_performance, plot_from_csv
-from transformers.models.vit.convert_vit_timm_to_pytorch import convert_vit_checkpoint
-from transformers.models.deit.convert_deit_timm_to_pytorch import convert_deit_checkpoint
+from transformers import ViTImageProcessor, ViTRDForImageClassification, ViTRDConfig
 
 
 import numpy as np
@@ -24,16 +23,6 @@ model = {
 
 
 discard_regex = r"tome-0_discard-([\d.]+)\.json"
-# discard_perf_vertical = [
-#     ("./workdir/vit_base_patch16_224.augreg2_in21k_ft_in1k.perf", discard_regex),
-#     ("./workdir/vit-graft-base-patch16-224-augreg2_in21k_ft_in1k-sup-6-discard-0.1.perf", discard_regex),
-#     ("./workdir/vit-graft-base-patch16-224-augreg2_in21k_ft_in1k-sup-6-discard-0.2.perf", discard_regex),
-#     ("./workdir/vit-graft-base-patch16-224-augreg2_in21k_ft_in1k-sup-6-discard-0.3.perf", discard_regex),
-#     ("./workdir/vit-graft-base-patch16-224-augreg2_in21k_ft_in1k-sup-6-discard-0.4.perf", discard_regex),
-#     ("./workdir/vit-graft-base-patch16-224-augreg2_in21k_ft_in1k-sup-6-discard-0.5.perf", discard_regex),
-#     ("./workdir/vit-graft-base-patch16-224-augreg2_in21k_ft_in1k-sup-6-discard-0.51.perf", discard_regex),
-#     ("./workdir/vit-graft-base-patch16-224-augreg2_in21k_ft_in1k-sup-12-discard-0.5.perf", discard_regex),
-# ]
 discard_perf_vertical = [
     ("./workdir/vit-base-patch16-224.perf", discard_regex),
     ("./workdir/vit-graft-base-patch16-224-sup-6-discard-0.3.perf", discard_regex),
@@ -57,17 +46,7 @@ tome_perf = [
 
 
 if __name__ == "__main__":
-    # convert_deit_checkpoint(
-    #     'deit_base_distilled_patch16_224',
-    #     '/home/jovyan/nas/yrc/model/timm/deit_base_distilled_patch16_224.fb_in1k/model.safetensors',
-    #     '/home/jovyan/nas/yrc/model/transformers/deit_base_distilled_patch16_224.fb_in1k/',
-    # )
-    convert_vit_checkpoint(
-        'deit3_base_patch16_224',
-        '/home/jovyan/nas/yrc/model/timm/deit3_base_patch16_224.fb_in1k/model.safetensors',
-        '/home/jovyan/nas/yrc/model/transformers/deit3_base_patch16_224.fb_in1k/',
-    )
-    # model = ViTGraftConfig()
+    # model = ViTRDConfig()
     # model.save_pretrained("./config.json")
     # processor = ViTImageProcessor()
     # processor.save_pretrained("./preprocessor_config.json")
