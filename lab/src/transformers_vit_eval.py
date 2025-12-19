@@ -68,9 +68,12 @@ def inference(
 
 def run_eval(args: argparse.Namespace):
     os.environ.pop("TOME_R", None)
+    os.environ.pop("DIVPRUNE", None)
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
     if args.tome_r:
         os.environ["TOME_R"] = str(args.tome_r)
+    if args.divprune:
+        os.environ["DIVPRUNE"] = str(1 - args.divprune)
 
     # generate dataloader
     data_transform = transforms.Compose([
@@ -97,7 +100,6 @@ def run_eval(args: argparse.Namespace):
     # create model
     model = ViTRDForImageClassification.from_pretrained(
         pretrained_model_name_or_path=args.pretrained_model_path,
-        ignore_mismatched_sizes=True,
         use_safetensors=args.use_safetensors,
     ).to(device)
     image_processor = ViTImageProcessor.from_pretrained(
@@ -126,6 +128,7 @@ def run_eval(args: argparse.Namespace):
         )
     torch.cuda.synchronize()
     os.environ.pop("TOME_R", None)
+    os.environ.pop("DIVPRUNE", None)
 
     inference_time = time.time() - start_time
     throughput = total_images / inference_time if inference_time > 0 else 0
@@ -134,8 +137,8 @@ def run_eval(args: argparse.Namespace):
         print(f"\n--- ToMe r={args.tome_r} Metrics ---")
     elif args.discard_rate > 0:
         print(f"\n--- Discard Rate={args.discard_rate} Metrics ---")
-    elif args.divprune_rate > 0:
-        print(f"\n--- DivPrune Rate={args.divprune_rate} Metrics ---")
+    elif args.divprune > 0:
+        print(f"\n--- DivPrune Rate={args.divprune} Metrics ---")
     else:
         print(f"\n--- Normal Metrics ---")
     print(f"FLOPs: {flops}, Params: {params}")
@@ -162,8 +165,8 @@ def run_eval(args: argparse.Namespace):
             file_name = f"tome-{args.tome_r}.json"
         elif args.discard_rate > 0:
             file_name = f"discard-{args.discard_rate:.1f}.json"
-        elif args.divprune_rate > 0:
-            file_name = f"divprune-{args.divprune_rate:.1f}.json"
+        elif args.divprune > 0:
+            file_name = f"divprune-{args.divprune:.1f}.json"
         else:
             file_name = f"normal.json"
         with open(os.path.join(args.results_save_path, file_name), "w") as f:
@@ -220,10 +223,10 @@ def defaultargs():
         help='Token discarding rate',
     )
     parser.add_argument(
-        '--divprune-rate',
+        '--divprune',
         type=float,
         default=0.,
-        help='Token diversity pruning rate',
+        help='Token pruning rate by divprune method',
     )
     parser.add_argument(
         '--tome-r',
@@ -243,16 +246,32 @@ def defaultargs():
 if __name__ == "__main__":
     args = defaultargs()
 
-    for i in np.arange(0, 1.0, 0.1):
-        args.tome_r = 0
-        args.discard_rate = round(i, 1)
-        args.divprune_rate = 0
-        print(f"------------------discard_rate: {args.discard_rate}------------------")
-        run_eval(args)
+    model_path_prefix = './ckpts/'
+    save_path_prefix = './workdir/'
+    model_paths = [
+        'vit-rd-base-patch16-224.augreg2_in21k_ft_in1k.sup-layerwise1-discard-0.4-layer-0/checkpoint-20019/',
+    ]
+    for model_path in model_paths:
+        args.pretrained_model_path = model_path_prefix + model_path
+        args.results_save_path = save_path_prefix + model_path.split('/', 1)[0] + '.perf'
 
-    # for i in range(1, 17):
-    #     args.tome_r = i
-    #     args.discard_rate = 0.
-    #     print(f"------------------tome_r: {args.tome_r}------------------")
-    #     run_eval(args)
+        print(f'model: {args.pretrained_model_path}')
+        print(f'save: {args.results_save_path}')
+        for i in np.arange(0, 1.0, 0.1):
+            args.discard_rate = round(i, 1)
+            args.divprune = 0
+            args.tome_r = 0
+            run_eval(args)
+
+        for i in np.arange(0.1, 1.0, 0.1):
+            args.discard_rate = 0
+            args.divprune = round(i, 1)
+            args.tome_r = 0
+            run_eval(args)
+
+        # for i in range(1, 17):
+        #     args.discard_rate = 0
+        #     args.divprune = 0
+        #     args.tome_r = i
+        #     run_eval(args)
 

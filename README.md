@@ -25,4 +25,5 @@ cd transformers
 pip install "transformers[torch]"
 pip install -e ".[torch]"
 pip install timm
+pip install scikit-learn
 ```
