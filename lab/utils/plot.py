@@ -8,9 +8,11 @@ import matplotlib.pyplot as plt
 from typing import List, Tuple, Literal, Optional
 
 
-def plot_performance(perf_dir: str = "./workdir/performance",
-                     file_regex: str = r"performance_tome_r-(\d+)\.json",
-                     save_path: str = "./workdir/performance/performance.png"):
+def plot_performance(
+    perf_dir: str = "./workdir/performance",
+    file_regex: str = r"performance_tome_r-(\d+)\.json",
+    save_path: str = "./workdir/performance/performance.png",
+):
     pattern = re.compile(file_regex)
     indices, flops, accuracy, throughput = [], [], [], []
 
@@ -56,13 +58,16 @@ def plot_performance(perf_dir: str = "./workdir/performance",
     plt.savefig(save_path)
 
 
-def plot_performance2(perf_dirs: List[Tuple[str, str]] = [
-    ('deit-tiny-patch16-224-fb-in1k', 'vit-tiny-patch16-224-augreg-in21k-ft-in1k'),
-    ('deit-small-patch16-224-fb-in1k', 'vit-small-patch16-224-augreg-in1k'),
-    ('deit-base-patch16-224-fb-in1k', 'vit-base-patch16-224-augreg-in1k'),
-    ('deit3-large-patch16-224-fb-in22k-ft-in1k', 'vit-large-patch16-224-augreg-in21k-ft-in1k')],
-                     file_regex: str = r"performance_tome_r-(\d+)\.json",
-                     save_path: str = "./workdir/performance.png"):
+def plot_performance2(
+    perf_dirs: List[Tuple[str, str]] = [
+        ('deit-tiny-patch16-224-fb-in1k', 'vit-tiny-patch16-224-augreg-in21k-ft-in1k'),
+        ('deit-small-patch16-224-fb-in1k', 'vit-small-patch16-224-augreg-in1k'),
+        ('deit-base-patch16-224-fb-in1k', 'vit-base-patch16-224-augreg-in1k'),
+        ('deit3-large-patch16-224-fb-in22k-ft-in1k', 'vit-large-patch16-224-augreg-in21k-ft-in1k'),
+    ],
+    file_regex: str = r"performance_tome_r-(\d+)\.json",
+    save_path: str = "./workdir/performance.png",
+):
     pattern = re.compile(file_regex)
     list_len = len(perf_dirs)
     tome_r = [{'origin': [], 'augreg': []} for _ in range(list_len)]
@@ -115,8 +120,10 @@ def plot_performance2(perf_dirs: List[Tuple[str, str]] = [
     plt.savefig(save_path)
 
 
-def plot_from_csv(csv_path: str = "./checkpoints/my-vit-small-patch16-224/20250806-181915-vit_small_patch16_224/summary.csv",
-                  save_path: str = "./checkpoints/my-vit-small-patch16-224/20250806-181915-vit_small_patch16_224/summary.png"):
+def plot_from_csv(
+    csv_path: str = "./checkpoints/my-vit-small-patch16-224/20250806-181915-vit_small_patch16_224/summary.csv",
+    save_path: str = "./checkpoints/my-vit-small-patch16-224/20250806-181915-vit_small_patch16_224/summary.png",
+):
     epochs = []
     train_loss = []
     eval_loss = []
@@ -141,28 +148,42 @@ def plot_from_csv(csv_path: str = "./checkpoints/my-vit-small-patch16-224/202508
     plt.savefig(save_path)
 
 
+def is_line_duplicate(ax, x_data, y_data):
+    for line in ax.get_lines():
+        existing_x, existing_y = line.get_xdata(), line.get_ydata()
+        if (existing_x == x_data).all() and (existing_y == y_data).all():
+            return True
+    return False
+
+
 def plot_multi_performance(
+    baseline_file: Optional[str] = None,
     dirs_and_files_regex: List[Tuple[str, str]] = [
         ("./workdir/vit-base-patch16-224.perf", r"tome-(\d+)_discard-([\d.]+)\.json"),
-        ("./workdir/vit-graft-base-patch16-224-sup-6-discard-0.3.perf", r"tome-(\d+)_discard-([\d.]+)\.json"),
+        ("./workdir/vit-base-patch16-224-sup-6-discard-0.3.perf", r"tome-(\d+)_discard-([\d.]+)\.json"),
     ],
-    indice_type: Literal["discard", "tome"] = "discard",
     save_path: str = "./workdir/multi-perf.png",
+    title: str = "Random Discard Performance",
+    x_label: str = "Discard Rate",
+    indices_range: Tuple[float, float] = (0.0, 0.9),
+    accuracy_range: Tuple[float, float] = (0.0, 90.0),
+    gflops_range: Tuple[float, float] = (0.0, 20.0),
     baseline_x: Optional[float] = None,
     baseline_y: Optional[float] = None,
 ):
-    color_list = ["black", "blue", "red", "orange", "purple", "cyan", "magenta", "green"]
-    plt.figure(figsize=(10, 6))
+    color_list = [
+        "black", "blue", "red", "orange", "purple", "pink", "violet", "green",
+        "gray", "yellow", "cyan", "lime", "teal", "navy", "magenta", "gold",
+        "indigo", "brown", "turquoise", "darkgreen",
+    ]
+    plt.figure(figsize=(16, 10))
     ax1 = plt.gca()
-    ax1.set_ylim(0.0, 90.0)
+    ax1.set_ylim(*accuracy_range)
     ax2 = ax1.twinx()
-    ax2.set_ylim(0.0, 20.0)
-    if indice_type == "discard":
-        ax1.set_xlabel("Discard Rate")
-        ax1.set_xlim(0.0, 1.0)
-    else:
-        ax1.set_xlabel("Token Merging r")
-        ax1.set_xlim(0.0, 16.0)
+    ax2.set_ylim(*gflops_range)
+    ax1.set_xlabel(x_label)
+    ax1.set_xlim(*indices_range)
+
     ax1.set_ylabel("Accuracy (%)")
     ax2.set_ylabel("Flops (G)")
     if baseline_x is not None:
@@ -176,6 +197,14 @@ def plot_multi_performance(
         perf_dir = dir_and_file[0]
         assert os.path.exists(perf_dir), f"Directory {perf_dir} does not exist."
         file_regex = dir_and_file[1]
+
+        if baseline_file is not None:
+            with open(os.path.join(perf_dir, baseline_file), "r") as f:
+                data = json.load(f)
+            indices.append(0.0)
+            flops.append(float(data["flops"].replace("G", "")))
+            accuracy.append(float(data["accuracy"])*100)
+
         pattern = re.compile(file_regex)
         for fname in os.listdir(perf_dir):
             match = pattern.match(fname)
@@ -197,7 +226,7 @@ def plot_multi_performance(
             linestyle='-',
             label=f"Accuracy of {os.path.splitext(os.path.basename(perf_dir))[0]}",
         )
-        if (indice_type == "discard" and i < 2) or (indice_type == "tome" and i == 0):
+        if not is_line_duplicate(ax2, indices, flops):
             ax2.plot(
                 indices,
                 flops,
@@ -211,10 +240,8 @@ def plot_multi_performance(
     handles = handles1 + handles2
     labels = labels1 + labels2
     ax1.legend(handles, labels, loc='lower left')
-    if indice_type == "discard":
-        plt.title("Random Discard Performance")
-    else:
-        plt.title("Token Merging Performance")
+
+    plt.title(title)
     plt.grid(True)
     plt.tight_layout()
     plt.show()
