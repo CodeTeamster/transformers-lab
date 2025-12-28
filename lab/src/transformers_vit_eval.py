@@ -70,11 +70,11 @@ def run_eval(args: argparse.Namespace):
     if args.tome_r > 0:
         file_name = f"tome-{args.tome_r}.json"
     elif args.discard_rate > 0:
-        file_name = f"discard-{args.discard_rate:.1f}.json"
+        file_name = f"discard-{args.discard_rate:.2f}.json"
     elif args.divprune > 0:
-        file_name = f"divprune-{args.divprune:.1f}.json"
+        file_name = f"divprune-{args.divprune:.2f}.json"
     elif args.evit > 0:
-        file_name = f"evit-{args.evit:.1f}.json"
+        file_name = f"evit-{args.evit:.2f}.json"
     else:
         file_name = f"normal.json"
     if os.path.exists(os.path.join(args.results_save_path, file_name)):
@@ -184,11 +184,11 @@ def run_eval(args: argparse.Namespace):
         if args.tome_r > 0:
             file_name = f"tome-{args.tome_r}.json"
         elif args.discard_rate > 0:
-            file_name = f"discard-{args.discard_rate:.1f}.json"
+            file_name = f"discard-{args.discard_rate:.2f}.json"
         elif args.divprune > 0:
-            file_name = f"divprune-{args.divprune:.1f}.json"
+            file_name = f"divprune-{args.divprune:.2f}.json"
         elif args.evit > 0:
-            file_name = f"evit-{args.evit:.1f}.json"
+            file_name = f"evit-{args.evit:.2f}.json"
         else:
             file_name = f"normal.json"
         with open(os.path.join(args.results_save_path, file_name), "w") as f:
@@ -217,13 +217,13 @@ def defaultargs():
     parser.add_argument(
         '--image-processor-path',
         type=str,
-        default='/starry-nas/yrc/model/transformers/vit_base_patch16_224.augreg2_in21k_ft_in1k/',
+        default='/home/jovyan/nas/yrc/model/transformers/vit_base_patch16_224.augreg2_in21k_ft_in1k/',
         help='Path to the image processor',
     )
     parser.add_argument(
         '--dataset-path',
         type=str,
-        default='/starry-nas/yrc/dataset/imagenet-1k/',
+        default='/home/jovyan/nas/yrc/dataset/imagenet-1k/',
         help='Path to the dataset',
     )
     parser.add_argument(
@@ -277,7 +277,9 @@ if __name__ == "__main__":
     model_path_prefix = './ckpts/'
     save_path_prefix = './workdir/'
     model_paths = [
-        'vit-rd-base-patch16-224.augreg2_in21k_ft_in1k.sup-layerwise1-discard-0.4-layer-0/checkpoint-20019/',
+        'augreg2.sup-layerwise1-discard-0.4-layer-0/checkpoint-460460/',
+        'augreg2.sup-layerwise2-discard-0.4-layer-0/checkpoint-480480/',
+        'augreg2.sup-0-discard-0.6-layer-4/checkpoint-420420/'
     ]
     for model_path in model_paths:
         args.pretrained_model_path = model_path_prefix + model_path
@@ -286,7 +288,7 @@ if __name__ == "__main__":
         print(f'model: {args.pretrained_model_path}')
         print(f'save: {args.results_save_path}')
         for i in np.arange(0, 1.0, 0.1):
-            args.discard_rate = round(i, 1)
+            args.discard_rate = round(i, 2)
             args.divprune = 0
             args.evit = 0
             args.tome_r = 0
@@ -294,7 +296,7 @@ if __name__ == "__main__":
 
         for i in np.arange(0.1, 1.0, 0.1):
             args.discard_rate = 0
-            args.divprune = round(i, 1)
+            args.divprune = round(i, 2)
             args.evit = 0
             args.tome_r = 0
             run_eval(args)
@@ -302,7 +304,7 @@ if __name__ == "__main__":
         for i in np.arange(0.1, 1.0, 0.1):
             args.discard_rate = 0
             args.divprune = 0
-            args.evit = round(i, 1)
+            args.evit = round(i, 2)
             args.tome_r = 0
             run_eval(args)
 
