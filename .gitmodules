@@ -1,3 +1,6 @@
 [submodule "transformers"]
 	path = transformers
 	url = git@github.com:CodeTeamster/transformers.git
+[submodule "lmms-eval"]
+	path = lmms-eval
+	url = git@github.com:CodeTeamster/lmms-eval.git
