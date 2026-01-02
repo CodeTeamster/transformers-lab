@@ -246,3 +246,69 @@ def plot_multi_performance(
     plt.tight_layout()
     plt.show()
     plt.savefig(save_path)
+
+
+def plot_acc_flops(
+    baseline_file: Optional[str] = None,
+    dirs_and_files_regex: List[Tuple[str, str]] = [
+        ("./workdir/vit-base-patch16-224.perf", r"tome-(\d+)_discard-([\d.]+)\.json"),
+        ("./workdir/vit-base-patch16-224-sup-6-discard-0.3.perf", r"tome-(\d+)_discard-([\d.]+)\.json"),
+    ],
+    save_path: str = "./workdir/multi-perf.png",
+    title: str = "Random Discard Performance",
+    accuracy_range: Tuple[float, float] = (0.0, 90.0),
+    gflops_range: Tuple[float, float] = (0.0, 20.0),
+):
+    color_list = [
+        "black", "blue", "red", "orange", "purple", "pink", "violet", "green",
+        "gray", "yellow", "cyan", "lime", "teal", "navy", "magenta", "gold",
+        "indigo", "brown", "turquoise", "darkgreen",
+    ]
+    plt.figure(figsize=(16, 10))
+    ax1 = plt.gca()
+    ax1.set_ylabel("Accuracy (%)")
+    ax1.set_ylim(*accuracy_range)
+    ax1.set_xlabel("Flops (G)")
+    ax1.set_xlim(*gflops_range)
+
+    for i, dir_and_file in enumerate(dirs_and_files_regex):
+        # 1. Load data
+        flops, accuracy = [], []
+        perf_dir = dir_and_file[0]
+        assert os.path.exists(perf_dir), f"Directory {perf_dir} does not exist."
+        file_regex = dir_and_file[1]
+
+        if baseline_file is not None:
+            with open(os.path.join(perf_dir, baseline_file), "r") as f:
+                data = json.load(f)
+            flops.append(float(data["flops"].replace("G", "")))
+            accuracy.append(float(data["accuracy"])*100)
+
+        pattern = re.compile(file_regex)
+        for fname in os.listdir(perf_dir):
+            match = pattern.match(fname)
+            if match:
+                with open(os.path.join(perf_dir, fname), "r") as f:
+                    data = json.load(f)
+                flops.append(float(data["flops"].replace("G", "")))
+                accuracy.append(float(data["accuracy"])*100)
+
+        # 2. Plot
+        sorted_data = sorted(zip(flops, accuracy))
+        flops, accuracy = map(list, zip(*sorted_data))
+        ax1.plot(
+            flops,
+            accuracy,
+            color=color_list[i],
+            linestyle='-',
+            label=f"Accuracy of {os.path.splitext(os.path.basename(perf_dir))[0]}",
+        )
+
+    handles1, labels1 = ax1.get_legend_handles_labels()
+    ax1.legend(handles1, labels1, loc='lower left')
+
+    plt.title(title)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+    plt.savefig(save_path)
