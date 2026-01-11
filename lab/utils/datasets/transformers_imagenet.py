@@ -92,3 +92,14 @@ class ImageNetDatasetUtils:
             batch_size = min(self.batch_size, train_len)
 
         return datasets, train_len, val_len, batch_size
+
+
+if __name__ == "__main__":
+    imagenet = ImageNetDatasetUtils(
+        dataset_mode=DatasetFormat.ARROW,
+        dataset_path='/home/jovyan/nas/yrc/dataset/imagenet-1k/arrow/',
+        batch_size=256,
+        num_proc=16,
+    )
+    datasets, train_len, val_len, batch_size = imagenet.load()
+    print(f"Train length: {train_len}, Validation length: {val_len}, Batch size: {batch_size}")

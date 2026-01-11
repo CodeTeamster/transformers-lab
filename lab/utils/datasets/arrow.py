@@ -1,4 +1,4 @@
-from datasets import load_dataset, Dataset, load_from_disk
+from datasets import load_dataset, load_from_disk
 from typing import Callable
 from transformers import ViTImageProcessor
 from PIL import Image
@@ -17,6 +17,7 @@ def create_arrow_datasets(
     num_proc: int=8
 ):
     if parquet_train_path is not None and parquet_validation_path is not None:
+        print(f"1. Loading parquet dataset from: {parquet_train_path} and {parquet_validation_path}")
         datasets = load_dataset(
             "parquet",
             data_files={
@@ -26,12 +27,14 @@ def create_arrow_datasets(
             num_proc=num_proc,
         )
     elif image_folder_path is not None:
+        print(f"1. Loading image folder dataset from: {image_folder_path}")
         datasets = load_dataset(
             "imagefolder",
             data_dir=image_folder_path,
             num_proc=num_proc,
         )
 
+    print(f"2. Processing dataset: batch_size = {batch_size}, num_proc = {num_proc}")
     datasets = datasets.map(
         process,
         batched=True,
@@ -39,6 +42,7 @@ def create_arrow_datasets(
         num_proc=num_proc,
         remove_columns=["image"]
     )
+    print(f"3. Saving dataset to disk: {arrow_save_path}")
     datasets.save_to_disk(arrow_save_path)
 
 
@@ -63,13 +67,13 @@ if __name__ == "__main__":
         return processed_inputs
 
     create_arrow_datasets(
-        parquet_train_path="/home/jovyan/nas/yrc/dataset/tiny-imagenet/train/train-00000-of-00001-1359597a978bc4fa.parquet",
-        parquet_validation_path="/home/jovyan/nas/yrc/dataset/tiny-imagenet/val/valid-00000-of-00001-70d52db3c749a935.parquet",
-        # image_folder_path="/home/jovyan/nas/yrc/dataset/imagenet-1k",
-        arrow_save_path="/home/jovyan/nas/yrc/dataset/tiny-imagenet/arrow/",
+        # parquet_train_path="/home/jovyan/nas/yrc/dataset/tiny-imagenet/train/train-00000-of-00001-1359597a978bc4fa.parquet",
+        # parquet_validation_path="/home/jovyan/nas/yrc/dataset/tiny-imagenet/val/valid-00000-of-00001-70d52db3c749a935.parquet",
+        image_folder_path="/home/jovyan/nas/yrc/dataset/imagenet-1k",
+        arrow_save_path="/home/jovyan/nas/yrc/dataset/imagenet-1k/arrow-batch256-nw16/",
         process=process,
-        batch_size=32,
-        num_proc=8
+        batch_size=256,
+        num_proc=16
     )
-    dataset = load_from_disk("/home/jovyan/nas/yrc/dataset/tiny-imagenet/arrow/")
+    dataset = load_from_disk("/home/jovyan/nas/yrc/dataset/imagenet-1k/arrow-batch256-nw16/")
     print(dataset['train'][0].keys())
