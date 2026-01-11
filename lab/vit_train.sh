@@ -2,12 +2,12 @@
 
 export PYTHONPATH=$(pwd):$PYTHONPATH
 export TORCH_CPP_LOG_LEVEL=ERROR
-export CUDA_VISIBLE_DEVICES=0,1,2,3
+export CUDA_VISIBLE_DEVICES=0
 NUM_DEVICES=$(echo $CUDA_VISIBLE_DEVICES | awk -F',' '{print NF}')
 BASE_PATH="/home/jovyan/nas"
-PRETRAINED_MODEL_PATH="$BASE_PATH/yrc/model/yeruichen/vit-rd-base-patch16-224.augreg2_in21k_ft_in1k.sup-0/"
+PRETRAINED_MODEL_PATH="$BASE_PATH/yrc/model/yeruichen/vit-rd-base-patch16-224.sup-0/"
 DATASET_PATH="$BASE_PATH/yrc/dataset/imagenet-1k/arrow/"
-CKPT_SAVE_PATH="./ckpts/evit-discard-0.3-layer369"
+CKPT_SAVE_PATH="./ckpts/evit.discard-0.3-layer369"
 
 accelerate launch --num_processes=$NUM_DEVICES \
     src/transformers_vit_train.py \
@@ -15,10 +15,10 @@ accelerate launch --num_processes=$NUM_DEVICES \
     --dataset-path="${DATASET_PATH}" \
     --image-processor-path="" \
     --ckpt-save-path="${CKPT_SAVE_PATH}" \
-    --ckpt-history-amount=6 \
+    --ckpt-history-amount=5 \
     --log-level="warning" \
-    --learning-rate=1e-5 \
-    --weight-decay=2e-2 \
+    --learning-rate=2e-5 \
+    --weight-decay=1e-2 \
     --warmup-ratio=0.06 \
     --num-epochs=50 \
     --earlystop-patience=0 \
