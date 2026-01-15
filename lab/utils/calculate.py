@@ -7,6 +7,10 @@ import time
 import warnings
 import logging
 import torch
+import transformers
+import os
+import json
+import random
 
 
 def calculate_inference_time(verbosity: bool=False):
@@ -32,8 +36,13 @@ def calculate_inference_time(verbosity: bool=False):
     return decorator
 
 
-def calculate_flops(model, batch_size: int = 1, sys_token_len: int = 15, 
-                    seq_len: int = 354, vision_token_len: int = 324):
+def calculate_flops(
+    model,
+    batch_size: int = 1,
+    sys_token_len: int = 15,
+    seq_len: int = 354,
+    vision_token_len: int = 324
+):
     """
         input_ids: torch.Size([1, 354])
         inputs_embeds: torch.Size([1, 354, 3584])
@@ -47,30 +56,59 @@ def calculate_flops(model, batch_size: int = 1, sys_token_len: int = 15,
         attention_mask.shape: torch.Size([1, 62])
     """
     input_ids = torch.cat((
-        torch.arange(sys_token_len, device=model.device), 
+        torch.arange(sys_token_len, device=model.device),
         torch.full((vision_token_len,), model.config.image_token_id, device=model.device),
         torch.arange(seq_len - sys_token_len - vision_token_len, device=model.device)
     )).unsqueeze(0).repeat(batch_size, 1)
 
-    dummy_inputs = (
-        input_ids,
-        torch.ones((batch_size, seq_len), dtype=torch.long).to(model.device),
-        torch.arange(seq_len, device=model.device).view(1, 1, seq_len).expand(4, batch_size, seq_len),
-        None,
-        None,
-        None,
-        True,
-        False,
-        False,
-        torch.rand((1296, 1176), dtype=torch.float32, device=model.device) * 2 - 1,
-        None,
-        torch.tensor([[1, 36, 36]], dtype=torch.long).to(model.device),
-        None,
-        None,
-        torch.arange(seq_len, device=model.device),
-    )
+    if type(model) == transformers.LlavaForConditionalGeneration:
+        pixel_values = torch.randn(
+            batch_size,
+            3,
+            model.config.vision_config.image_size,
+            model.config.vision_config.image_size,
+            device=model.device,
+        )
+        attention_mask = torch.full_like(input_ids, 1, device=model.device)
+
+        if os.environ.get('RANDOM_DISCARD') is not None:
+            random_discard = json.loads(os.environ['RANDOM_DISCARD'])
+            if random_discard['discard_rate'] < 0.0:
+                discard_rate = random.uniform(0.0, abs(random_discard['discard_rate']))
+            else:
+                discard_rate = random_discard['discard_rate']
+            input_ids, _, attention_mask, _ = model._prepare_inputs_for_discard(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                discard_rate=discard_rate,
+                discard_before_layer=random_discard['discard_before_layer'],
+            )
+
+        dummy_inputs = (
+            input_ids,
+            pixel_values,
+            attention_mask,
+        )
+    elif type(model) == transformers.Qwen2_5_VLForConditionalGeneration:
+        dummy_inputs = (
+            input_ids,
+            torch.ones((batch_size, seq_len), dtype=torch.long).to(model.device),
+            torch.arange(seq_len, device=model.device).view(1, 1, seq_len).expand(4, batch_size, seq_len),
+            None,
+            None,
+            None,
+            True,
+            False,
+            False,
+            torch.rand((1296, 1176), dtype=torch.float32, device=model.device) * 2 - 1,
+            None,
+            torch.tensor([[1, 36, 36]], dtype=torch.long).to(model.device),
+            None,
+            None,
+            torch.arange(seq_len, device=model.device),
+        )
 
     flops, params = profile(model, inputs=dummy_inputs, verbose=False)
     flops, params = clever_format([flops, params], "%.2f")
-    
+
     return flops, params
