@@ -52,20 +52,23 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 TASKS_STR="mme"
-for rate in $(seq 0 0.05 0.95); do
-    DISCARD_RATE=$rate
-    export RANDOM_DISCARD="{\"discard_rate\": ${DISCARD_RATE}, \"discard_before_layer\": ${DISCARD_BEFORE_LAYER}, \"discard_seed\": ${DISCARD_SEED}}"
-    RUN_NAME=llava_1.5_7b_${MIXED_PRECISION}_discard-${DISCARD_RATE}_seed-${DISCARD_SEED}_layer-0
+for seed in $(seq 1 2 21); do
+    DISCARD_SEED=$seed
+    for rate in $(seq 0 0.05 0.95); do
+        DISCARD_RATE=$rate
+        export RANDOM_DISCARD="{\"discard_rate\": ${DISCARD_RATE}, \"discard_before_layer\": ${DISCARD_BEFORE_LAYER}, \"discard_seed\": ${DISCARD_SEED}}"
+        RUN_NAME=llava_1.5_7b_${MIXED_PRECISION}_discard-${DISCARD_RATE}_seed-${DISCARD_SEED}_layer-0
 
-    echo "************************ ${RUN_NAME} ************************ "
-    accelerate launch $CONFIG_FILE_ARG --num_processes $NUM_DEVICES \
-        -m lmms_eval \
-        --model llava_hf \
-        --model_args pretrained="${PRETRAINED_MODEL_PATH},dtype=${FULL_PRECISION},attn_implementation=flash_attention_2" \
-        --tasks $TASKS_STR \
-        --verbosity WARNING \
-        --batch_size 1 \
-        --log_samples \
-        --log_samples_suffix $RUN_NAME \
-        --output_path $LOG_DIR/$RUN_NAME
+        echo "************************ ${RUN_NAME} ************************ "
+        accelerate launch $CONFIG_FILE_ARG --num_processes $NUM_DEVICES \
+            -m lmms_eval \
+            --model llava_hf \
+            --model_args pretrained="${PRETRAINED_MODEL_PATH},dtype=${FULL_PRECISION},attn_implementation=flash_attention_2" \
+            --tasks $TASKS_STR \
+            --verbosity WARNING \
+            --batch_size 1 \
+            --log_samples \
+            --log_samples_suffix $RUN_NAME \
+            --output_path $LOG_DIR/$RUN_NAME
+    done
 done
