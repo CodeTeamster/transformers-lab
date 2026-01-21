@@ -3,9 +3,10 @@ import json
 import re
 import csv
 import matplotlib.pyplot as plt
+import numpy as np
 
 
-from typing import List, Tuple, Literal, Optional
+from typing import List, Tuple, Optional
 
 
 def plot_performance(
@@ -312,3 +313,208 @@ def plot_acc_flops(
     plt.tight_layout()
     plt.show()
     plt.savefig(save_path)
+
+
+def plot_lmms_eval_res(
+    dirs_and_files_regex: List[Tuple[str, str]] = [
+        ("./workdir/lmms-eval", r"llava_1.5_7b_fp16_discard-([\d.]+)_layer-0"),
+        ("./workdir/lmms-eval", r"llava_1.5_7b_fp16_discard-([\d.]+)_layer-23"),
+    ],
+    save_path: str = "./workdir/lmms-eval/llava_1.5_7b_fp16_discard.png",
+    title: str = "Random Discard Performance",
+    x_label: str = "Discard Rate",
+    indices_range: Tuple[float, float] = (0.00, 0.95),
+    mme_cognition_range: Tuple[float, float] = (200.0, 400.0),
+    mme_perception_range: Tuple[float, float] = (600.0, 1500.0),
+    tflops_range: Tuple[float, float] = (0.0, 20.0),
+):
+    color_list = [
+        "black", "blue", "red", "orange", "purple", "pink", "violet", "green",
+        "gray", "yellow", "cyan", "lime", "teal", "navy", "magenta", "gold",
+        "indigo", "brown", "turquoise", "darkgreen",
+    ]
+    plt.figure(figsize=(16, 10))
+    ax1 = plt.gca()
+    ax1.set_ylim(*mme_cognition_range)
+    ax2 = ax1.twinx()
+    ax2.set_ylim(*mme_perception_range)
+
+    ax1.set_xlabel(x_label)
+    ax1.set_xlim(*indices_range)
+    xticks = np.arange(indices_range[0], indices_range[1] + 0.001, 0.05)
+    ax1.set_xticks(xticks)
+
+    ax1.set_ylabel("MME Cognition Score")
+    ax2.set_ylabel("MME Perception Score")
+
+    for i, dir_and_file in enumerate(dirs_and_files_regex):
+        # 1. Load data
+        indices, mme_cognition, mme_perception = [], [], []
+        first_dir = dir_and_file[0]
+        assert os.path.exists(first_dir), f"Directory {first_dir} does not exist."
+        second_dir_regex = dir_and_file[1]
+
+        second_dir_pattern = re.compile(second_dir_regex)
+        file_pattern = re.compile(r".+_results\.json$")
+        for second_dir_name in os.listdir(first_dir):
+            match = second_dir_pattern.match(second_dir_name)
+            if not match:
+                continue
+            second_dir = os.path.join(first_dir, second_dir_name, 'llava-hf__llava-1.5-7b-hf')
+            if not os.path.isdir(second_dir):
+                continue
+            for file_name in os.listdir(second_dir):
+                if file_pattern.match(file_name):
+                    indice = float(match.group(1))
+                    with open(os.path.join(second_dir, file_name), "r") as f:
+                        data = json.load(f)
+                    indices.append(indice)
+                    mme_cognition.append(float(data["results"]["mme"]["mme_cognition_score,none"]))
+                    mme_perception.append(float(data["results"]["mme"]["mme_perception_score,none"]))
+
+        # 2. Plot
+        sorted_data = sorted(zip(indices, mme_cognition, mme_perception))
+        indices, mme_cognition, mme_perception = map(list, zip(*sorted_data))
+        ax1.plot(
+            indices,
+            mme_cognition,
+            color=color_list[i],
+            linestyle='-',
+            label=f"MME Cognition of {second_dir_regex}",
+        )
+        ax2.plot(
+            indices,
+            mme_perception,
+            color=color_list[i],
+            linestyle='--',
+            label=f"MME Perception of {second_dir_regex}",
+        )
+
+    handles1, labels1 = ax1.get_legend_handles_labels()
+    handles2, labels2 = ax2.get_legend_handles_labels()
+    handles = handles1 + handles2
+    labels = labels1 + labels2
+    ax1.legend(handles, labels, loc='lower left')
+
+    plt.title(title)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+    plt.savefig(save_path)
+
+
+def plot_lmms_eval_norm_res(
+    dirs_and_files_regex: List[Tuple[str, str]] = [
+        ("./workdir/lmms-eval", r"llava_1.5_7b_fp16_discard-([\d.]+)_seed-(\d+)_layer-0", "llava-hf__llava-1.5-7b-hf"),
+        ("./workdir/lmms-eval", r"qwen_2.5_vl_7b_bf16_discard-([\d.]+)_seed-(\d+)_layer-0", "Qwen__Qwen2.5-VL-7B-Instruct"),
+    ],
+    save_path: str = "./workdir/lmms-eval/llava_1.5_7b_fp16_discard_norm.png",
+    title: str = "Random Discard Cognition Performance",
+    x_label: str = "Discard Rate",
+    y_label: str = "MME Cognition Score",
+    perf_keys: list[str] = ["results", "mme", "mme_cognition_score,none"],
+    seed_list: List[int] = [i for i in range(1, 22, 2)],
+    x_range: Tuple[float, float] = (0.00, 0.95),
+    y_range: Tuple[float, float] = (200.0, 400.0),
+):
+    color_list = [
+        "black", "blue", "red", "orange", "purple", "pink", "violet", "green",
+        "gray", "yellow", "cyan", "lime", "teal", "navy", "magenta", "gold",
+        "indigo", "brown", "turquoise", "darkgreen",
+    ]
+    plt.figure(figsize=(16, 10))
+    ax1 = plt.gca()
+
+    ax1.set_xlabel(x_label)
+    ax1.set_xlim(*x_range)
+    xticks = np.arange(x_range[0], x_range[1] + 0.001, 0.05)
+    ax1.set_xticks(xticks)
+
+    ax1.set_ylim(*y_range)
+    ax1.set_ylabel(y_label)
+
+    for i, dir_and_file in enumerate(dirs_and_files_regex):
+        # 1. Load data
+        indices = set()
+        y_values = {seed: [] for seed in seed_list}
+        first_dir = dir_and_file[0]
+        assert os.path.exists(first_dir), f"Directory {first_dir} does not exist."
+        second_dir_regex = dir_and_file[1]
+
+        second_dir_pattern = re.compile(second_dir_regex)
+        file_pattern = re.compile(r".+_results\.json$")
+        for second_dir_name in os.listdir(first_dir):
+            match = second_dir_pattern.match(second_dir_name)
+            if not match:
+                continue
+            seed = int(match.group(2))
+            if y_values.get(seed) is None:
+                continue
+            second_dir = os.path.join(first_dir, second_dir_name, dir_and_file[2])
+            if not os.path.isdir(second_dir):
+                continue
+            for file_name in os.listdir(second_dir):
+                if file_pattern.match(file_name):
+                    indice = float(match.group(1))
+                    with open(os.path.join(second_dir, file_name), "r") as f:
+                        data = json.load(f)
+                    indices.add(indice)
+                    y_values[seed].append(float(data[perf_keys[0]][perf_keys[1]][perf_keys[2]]))
+
+        mu_y, sigma_y = [], []
+        for indices_index in range(len(indices)):
+            vals = [y_values[seed][indices_index] for seed in seed_list]
+            mu_y.append(np.mean(vals))
+            sigma_y.append(np.std(vals))
+
+        # 2. Plot
+        sorted_data = sorted(zip(indices, mu_y, sigma_y))
+        indices, mu_y, sigma_y = map(list, zip(*sorted_data))
+
+        ax1.plot(
+            indices,
+            mu_y,
+            color=color_list[i],
+            linestyle='-',
+            label=f"{y_label} of {second_dir_regex}",
+        )
+        ax1.fill_between(
+            indices,
+            np.array(mu_y) + np.array(sigma_y),
+            np.array(mu_y) - np.array(sigma_y),
+            facecolor=color_list[i],
+            alpha=0.4
+        )
+
+    handles, labels = ax1.get_legend_handles_labels()
+    ax1.legend(handles, labels, loc='lower left')
+
+    plt.title(title)
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+    plt.savefig(save_path)
+
+
+if __name__ == "__main__":
+    # plot_lmms_eval_res()
+    plot_lmms_eval_norm_res(
+        save_path="./workdir/lmms-eval/llava_1.5_7b_fp16_discard_cognition_norm.png",
+        title="Random Discard Cognition Performance",
+        x_label="Discard Rate",
+        y_label="MME Cognition Score",
+        perf_keys=["results", "mme", "mme_cognition_score,none"],
+        seed_list=[1],
+        x_range=(0.00, 0.95),
+        y_range=(200.0, 700.0),
+    )
+    plot_lmms_eval_norm_res(
+        save_path="./workdir/lmms-eval/llava_1.5_7b_fp16_discard_perception_norm.png",
+        title="Random Discard Perception Performance",
+        x_label="Discard Rate",
+        y_label="MME Perception Score",
+        perf_keys=["results", "mme", "mme_perception_score,none"],
+        seed_list=[1],
+        x_range=(0.00, 0.95),
+        y_range=(600.0, 1800.0),
+    )

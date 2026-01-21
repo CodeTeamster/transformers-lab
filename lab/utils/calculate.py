@@ -8,12 +8,9 @@ import warnings
 import logging
 import torch
 import transformers
-import os
-import json
-import random
 
 
-def calculate_inference_time(verbosity: bool=False):
+def calculate_inference_time(verbosity: bool = False):
     """
     Decorator which calculate the inference time in seconds.
 
@@ -38,10 +35,10 @@ def calculate_inference_time(verbosity: bool=False):
 
 def calculate_flops(
     model,
-    batch_size: int=1,
-    sys_token_len: int=11,
-    seq_len: int=1024,
-    image_size: int=336,
+    batch_size: int = 1,
+    sys_token_len: int = 11,
+    seq_len: int = 1024,
+    image_size: int = 336,
 ):
     if type(model) == transformers.LlavaForConditionalGeneration:
         vision_token_len = (image_size // model.config.vision_config.patch_size) ** 2
