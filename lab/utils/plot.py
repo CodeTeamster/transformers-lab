@@ -433,39 +433,41 @@ def plot_lmms_eval_norm_res(
     ax1.set_ylim(*y_range)
     ax1.set_ylabel(y_label)
 
+    seed_set = set(seed_list)
     for i, dir_and_file in enumerate(dirs_and_files_regex):
         # 1. Load data
-        indices = set()
-        y_values = {seed: [] for seed in seed_list}
+        y_values = {}
         first_dir = dir_and_file[0]
         assert os.path.exists(first_dir), f"Directory {first_dir} does not exist."
-        second_dir_regex = dir_and_file[1]
 
+        second_dir_regex = dir_and_file[1]
         second_dir_pattern = re.compile(second_dir_regex)
         file_pattern = re.compile(r".+_results\.json$")
+
         for second_dir_name in os.listdir(first_dir):
             match = second_dir_pattern.match(second_dir_name)
             if not match:
                 continue
-            seed = int(match.group(2))
-            if y_values.get(seed) is None:
+            if int(match.group(2)) not in seed_set:
                 continue
             second_dir = os.path.join(first_dir, second_dir_name, dir_and_file[2])
             if not os.path.isdir(second_dir):
                 continue
             for file_name in os.listdir(second_dir):
                 if file_pattern.match(file_name):
-                    indice = float(match.group(1))
                     with open(os.path.join(second_dir, file_name), "r") as f:
                         data = json.load(f)
-                    indices.add(indice)
-                    y_values[seed].append(float(data[perf_keys[0]][perf_keys[1]][perf_keys[2]]))
 
-        mu_y, sigma_y = [], []
-        for indices_index in range(len(indices)):
-            vals = [y_values[seed][indices_index] for seed in seed_list]
-            mu_y.append(np.mean(vals))
-            sigma_y.append(np.std(vals))
+                    indice = float(match.group(1))
+                    if indice not in y_values:
+                        y_values[indice] = []
+                    y_values[indice].append(float(data[perf_keys[0]][perf_keys[1]][perf_keys[2]]))
+
+        indices, mu_y, sigma_y = [], [], []
+        for indice, y_list in y_values.items():
+            indices.append(indice)
+            mu_y.append(np.mean(y_list))
+            sigma_y.append(np.std(y_list))
 
         # 2. Plot
         sorted_data = sorted(zip(indices, mu_y, sigma_y))
@@ -499,22 +501,22 @@ def plot_lmms_eval_norm_res(
 if __name__ == "__main__":
     # plot_lmms_eval_res()
     plot_lmms_eval_norm_res(
-        save_path="./workdir/lmms-eval/llava_1.5_7b_fp16_discard_cognition_norm.png",
+        save_path="./workdir/lmms-eval/llava_qwen_discard_cognition_norm.png",
         title="Random Discard Cognition Performance",
         x_label="Discard Rate",
         y_label="MME Cognition Score",
         perf_keys=["results", "mme", "mme_cognition_score,none"],
-        seed_list=[1],
+        seed_list=[i for i in range(1, 16, 2)],
         x_range=(0.00, 0.95),
         y_range=(200.0, 700.0),
     )
     plot_lmms_eval_norm_res(
-        save_path="./workdir/lmms-eval/llava_1.5_7b_fp16_discard_perception_norm.png",
+        save_path="./workdir/lmms-eval/llava_qwen_discard_perception_norm.png",
         title="Random Discard Perception Performance",
         x_label="Discard Rate",
         y_label="MME Perception Score",
         perf_keys=["results", "mme", "mme_perception_score,none"],
-        seed_list=[1],
+        seed_list=[i for i in range(1, 16, 2)],
         x_range=(0.00, 0.95),
         y_range=(600.0, 1800.0),
     )
