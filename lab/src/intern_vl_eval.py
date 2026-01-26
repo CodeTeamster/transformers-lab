@@ -1,5 +1,4 @@
-from transformers import Qwen2_5_VLForConditionalGeneration, Qwen2_5_VLProcessor
-from qwen_vl_utils import process_vision_info
+from transformers import InternVLForConditionalGeneration, InternVLProcessor, BitsAndBytesConfig
 from utils import calculate_inference_time, calculate_flops
 
 
@@ -7,12 +6,13 @@ import argparse
 import os
 import random
 import json
+import torch
 
 
 @calculate_inference_time(verbosity=False)
 def inference(
-    model: Qwen2_5_VLForConditionalGeneration,
-    processor: Qwen2_5_VLProcessor,
+    model: InternVLForConditionalGeneration,
+    processor: InternVLProcessor,
     conversation: list,
 ):
     # Preparation for inference
@@ -20,27 +20,21 @@ def inference(
     # <|im_start|>system
     # You are a helpful assistant.<|im_end|>
     # <|im_start|>user
-    # <|vision_start|><|image_pad|><|vision_end|>Tell me what I should pay attention to.<|im_end|>
+    # <IMG_CONTEXT>
+    # Tell me what I should pay attention to.<|im_end|>
     # <|im_start|>assistant
-    text = processor.apply_chat_template(
+    inputs = processor.apply_chat_template(
         conversation=conversation,
-        tokenize=False,
+        tokenize=True,
         add_generation_prompt=True,
-        add_vision_id=False,
-    )
-
-    # image_inputs = [PIL.ImageFile, ...] or None
-    image_inputs, _ = process_vision_info(conversation)
-
-    assert isinstance(image_inputs, list) or image_inputs is None
-    # inputs = {'input_ids': tensor(), 'attention_mask': tensor(), 'pixel_values': tensor(), 'image_grid_thw': tensor()}
-    inputs = processor(
-        text=[text],
-        images=image_inputs,
-        padding=True,
+        return_dict=True,
         return_tensors="pt",
-    )
-    inputs = inputs.to(model.device)
+    ).to(model.device, dtype=torch.bfloat16)
+    # image: 1500 * 1435
+    # inputs["input_ids"]: (1, 2619)
+    # image_id len: (2560)
+    # inputs["attention_mask"]: (1, 2619)
+    # inputs["pixel_values"]: (10, 3, 448, 448)
 
     # Inference: Generation of the output
     full_ids = model.generate(**inputs, max_new_tokens=256)
@@ -59,14 +53,15 @@ def inference(
 def run_eval(args: argparse.Namespace):
     os.environ.pop("RANDOM_DISCARD", None)
 
-    model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
+    model = InternVLForConditionalGeneration.from_pretrained(
         pretrained_model_name_or_path=args.pretrained_model_path,
-        dtype="float16",
+        dtype="bfloat16",
+        quantization_config=BitsAndBytesConfig(load_in_4bit=True),
         attn_implementation="flash_attention_2",
         device_map="cuda:0",
     )
 
-    processor = Qwen2_5_VLProcessor.from_pretrained(
+    processor = InternVLProcessor.from_pretrained(
         pretrained_model_name_or_path=args.pretrained_model_path,
         use_fast=True,
     )
@@ -97,7 +92,7 @@ def run_eval(args: argparse.Namespace):
     ]
 
     if abs(args.discard_rate) > 0.0 and len(args.discard_before_layers) > 0:
-        discard_before_layers = [False] * model.config.num_hidden_layers
+        discard_before_layers = [False] * model.config.text_config.num_hidden_layers
         for layer_id in args.discard_before_layers:
             discard_before_layers[layer_id] = True
         if args.discard_rate < 0.0:
@@ -135,7 +130,7 @@ def defaultargs():
     parser.add_argument(
         '--pretrained-model-path',
         type=str,
-        default="/home/jovyan/nas/yrc/model/Qwen/Qwen2.5-VL-7B-Instruct",
+        default="/home/jovyan/nas/yrc/model/OpenGVLab/InternVL3_5-8B-HF",
         help='Path to the pretrained model',
     )
     parser.add_argument(

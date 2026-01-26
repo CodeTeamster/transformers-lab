@@ -49,6 +49,20 @@ def calculate_flops(
             image_size,
             device=model.device,
         )
+
+        input_ids = torch.cat((
+            torch.arange(sys_token_len, device=model.device),
+            torch.full((vision_token_len,), model.config.image_token_id, device=model.device),
+            torch.arange(seq_len - sys_token_len - vision_token_len, device=model.device)
+        )).unsqueeze(0).repeat(batch_size, 1)
+
+        attention_mask = torch.full_like(input_ids, 1, dtype=torch.long, device=model.device)
+
+        position_ids = torch.arange(
+            seq_len,
+            dtype=torch.long,
+            device=model.device
+        ).expand(batch_size, -1)
     elif type(model) == transformers.Qwen2_5_VLForConditionalGeneration:
         vision_token_len = (image_size // model.config.vision_config.patch_size // model.config.vision_config.spatial_merge_size) ** 2
         t_grid = 1
@@ -59,24 +73,52 @@ def calculate_flops(
             model.config.vision_config.patch_size ** 2 * 2 * 3,
             device=model.device,
         )
+
         image_grid_thw = torch.tensor(
             [[t_grid, h_grid, w_grid]],
             dtype=torch.long,
             device=model.device,
         )
 
-    input_ids = torch.cat((
-        torch.arange(sys_token_len, device=model.device),
-        torch.full((vision_token_len,), model.config.image_token_id, device=model.device),
-        torch.arange(seq_len - sys_token_len - vision_token_len, device=model.device)
-    )).unsqueeze(0).repeat(batch_size, 1)
-    attention_mask = torch.full_like(input_ids, 1, dtype=torch.long, device=model.device)
-    position_ids = torch.arange(
-        seq_len,
-        dtype=torch.long,
-        device=model.device
-    ).expand(batch_size, -1)
-    cache_position = position_ids.view(1, -1).squeeze(0)
+        input_ids = torch.cat((
+            torch.arange(sys_token_len, device=model.device),
+            torch.full((vision_token_len,), model.config.image_token_id, device=model.device),
+            torch.arange(seq_len - sys_token_len - vision_token_len, device=model.device)
+        )).unsqueeze(0).repeat(batch_size, 1)
+
+        attention_mask = torch.full_like(input_ids, 1, dtype=torch.long, device=model.device)
+
+        position_ids = torch.arange(
+            seq_len,
+            dtype=torch.long,
+            device=model.device
+        ).expand(batch_size, -1)
+
+        cache_position = position_ids.view(1, -1).squeeze(0)
+    elif type(model) == transformers.InternVLForConditionalGeneration:
+        tile_size = model.config.vision_config.image_size[0]
+        vision_token_len = (image_size // tile_size) ** 2 if image_size > tile_size else 1
+        pixel_values = torch.randn(
+            batch_size * vision_token_len,
+            3,
+            tile_size,
+            tile_size,
+            device=model.device,
+        )
+
+        input_ids = torch.cat((
+            torch.arange(sys_token_len, device=model.device),
+            torch.full((vision_token_len * model.config.image_seq_length,), model.config.image_token_id, device=model.device),
+            torch.arange(seq_len - sys_token_len - vision_token_len * model.config.image_seq_length, device=model.device)
+        )).unsqueeze(0).repeat(batch_size, 1)
+
+        attention_mask = torch.full_like(input_ids, 1, dtype=torch.long, device=model.device)
+
+        position_ids = torch.arange(
+            seq_len,
+            dtype=torch.long,
+            device=model.device
+        ).expand(batch_size, -1)
 
     if type(model) == transformers.LlavaForConditionalGeneration:
         dummy_inputs = (
@@ -102,6 +144,13 @@ def calculate_flops(
             None,
             None,
             cache_position,
+        )
+    elif type(model) == transformers.InternVLForConditionalGeneration:
+        dummy_inputs = (
+            input_ids,
+            pixel_values,
+            attention_mask,
+            position_ids,
         )
 
     flops, params = profile(model, inputs=dummy_inputs, verbose=False)
