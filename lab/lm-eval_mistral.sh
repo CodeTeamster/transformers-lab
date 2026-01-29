@@ -9,7 +9,7 @@ export HF_HOME="${BASE_PATH}/yrc/.cache/huggingface"
 export HF_TOKEN=""
 export HF_HUB_ENABLE_HF_TRANSFER="1"
 export NLTK_DATA="${BASE_PATH}/yrc/dataset/nltk_data"
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 NUM_DEVICES=$(echo $CUDA_VISIBLE_DEVICES | awk -F',' '{print NF}')
 
 # model configuration
@@ -61,13 +61,17 @@ for seed in $(seq 1 2 21); do
         export RANDOM_DISCARD="{\"discard_rate\": ${DISCARD_RATE}, \"discard_before_layer\": ${DISCARD_BEFORE_LAYER}, \"discard_seed\": ${DISCARD_SEED}}"
         RUN_NAME=mistral_v0.3_7b_${MIXED_PRECISION}_discard-${DISCARD_RATE}_seed-${DISCARD_SEED}_layer-0
 
-        echo "************************ ${RUN_NAME} ************************ "
+        echo "************************ ${RUN_NAME} ************************"
+        if [ -d "$LOG_DIR/$RUN_NAME" ]; then
+            echo "$LOG_DIR/$RUN_NAME already exists. Skipping..."
+            continue
+        fi
+
         accelerate launch $CONFIG_FILE_ARG --num_processes $NUM_DEVICES \
             -m lm_eval \
             --model hf \
             --model_args pretrained="${PRETRAINED_MODEL_PATH},dtype=${FULL_PRECISION},attn_implementation=flash_attention_2" \
             --tasks $TASKS_STR \
-            --verbosity WARNING \
             --batch_size 1 \
             --log_samples \
             --output_path $LOG_DIR/$RUN_NAME
