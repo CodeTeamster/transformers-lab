@@ -59,7 +59,12 @@ for seed in $(seq 1 2 21); do
         export RANDOM_DISCARD="{\"discard_rate\": ${DISCARD_RATE}, \"discard_before_layer\": ${DISCARD_BEFORE_LAYER}, \"discard_seed\": ${DISCARD_SEED}}"
         RUN_NAME=intern_3.5_vl_hf_8b_${MIXED_PRECISION}_discard-${DISCARD_RATE}_seed-${DISCARD_SEED}_layer-0
 
-        echo "************************ ${RUN_NAME} ************************ "
+        echo "************************ ${RUN_NAME} ************************"
+        if [ -d "$LOG_DIR/$RUN_NAME" ]; then
+            echo "$LOG_DIR/$RUN_NAME already exists. Skipping..."
+            continue
+        fi
+
         accelerate launch $CONFIG_FILE_ARG --num_processes $NUM_DEVICES \
             -m lmms_eval \
             --model internvl_hf \
