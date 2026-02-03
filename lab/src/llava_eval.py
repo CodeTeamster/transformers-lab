@@ -1,12 +1,14 @@
 from transformers import LlavaForConditionalGeneration, LlavaProcessor
 from PIL import Image
-from utils import calculate_inference_time, calculate_flops
+from utils import calculate_inference_time, calculate_flops, visualize_attention
 
 
 import argparse
 import os
 import random
 import json
+import gc
+import numpy as np
 
 
 @calculate_inference_time(verbosity=False)
@@ -35,9 +37,15 @@ def inference(
     inputs = inputs.to(model.device)
 
     # Inference: Generation of the output
-    full_ids = model.generate(**inputs, max_new_tokens=256)
+    full_ids = model.generate(
+        **inputs,
+        return_dict_in_generate=True,
+        output_attentions=True,
+        max_new_tokens=256
+    )
+
     full_texts = processor.batch_decode(
-        full_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
+        full_ids.sequences, skip_special_tokens=True, clean_up_tokenization_spaces=False
     )
     origin_texts = processor.batch_decode(
         inputs.input_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
@@ -45,7 +53,7 @@ def inference(
     generated_texts = [full_text.replace(origin_text, "") for full_text, origin_text in zip(full_texts, origin_texts)]
     generated_token_lens = [processor.tokenizer(generated_text, return_tensors="pt").input_ids.shape[-1] for generated_text in generated_texts]
 
-    return generated_token_lens, generated_texts
+    return generated_token_lens, generated_texts, full_ids.attentions
 
 
 def run_eval(args: argparse.Namespace):
@@ -54,7 +62,7 @@ def run_eval(args: argparse.Namespace):
     model = LlavaForConditionalGeneration.from_pretrained(
         pretrained_model_name_or_path=args.pretrained_model_path,
         dtype="float16",
-        attn_implementation="flash_attention_2",
+        attn_implementation="eager",
         device_map="cuda:0",
     )
 
@@ -104,12 +112,26 @@ def run_eval(args: argparse.Namespace):
         os.environ['RANDOM_DISCARD'] = json.dumps(random_discard)
 
     flops, params = calculate_flops(model)
-    inference_time, (num_tokens, inference_res) = inference(
+    inference_time, (num_tokens, inference_res, multihead_attentions)  = inference(
         model=model,
         processor=processor,
         conversation=conversation,
     )
     tps = num_tokens[0] / inference_time
+
+    if args.visualization_output_dir is not None:
+        os.makedirs(args.visualization_output_dir, exist_ok=True)
+        for layer in range(0, model.config.text_config.num_hidden_layers):
+            output_path = os.path.join(
+                args.visualization_output_dir,
+                f"attn_heatmap_layer-{layer + 1}_discard-{args.discard_rate}.png",
+            )
+            visualize_attention(
+                multihead_attention = multihead_attentions[0][layer].cpu(),
+                output_path=output_path,
+                title=f"Layer {layer + 1}",
+                pool_kernel_size=10,
+            )
 
     print(f'Model FLOPs: {flops} ')
     print(f'Model Params: {params} ')
@@ -139,7 +161,7 @@ def defaultargs():
     parser.add_argument(
         '--discard-rate',
         type=float,
-        default=0.1,
+        default=0.,
         help='Token discarding rate',
     )
     parser.add_argument(
@@ -151,21 +173,28 @@ def defaultargs():
     parser.add_argument(
         '--discard-seed',
         type=int,
-        default=None,
+        default=42,
     )
     parser.add_argument(
         '--image-path',
         type=str,
-        default="./resources/ai2d-demo.JPEG",
+        default="./resources/elephant_512x512.JPEG",
         # default="./resources/ILSVRC2012_val_00048969.JPEG",
         help='Path to the image for evaluation',
     )
     parser.add_argument(
         '--text-prompt',
         type=str,
-        default="What does the label 15 represent? (1) lava (2) core (3) tunnel (4) ash cloud, only give the name corresponding to the correct option.",
+        default="How many elephants can you see in this image, just answer a number?",
         # default="Please describe the detail of this image.",
         help='Text prompt for the model',
+    )
+    parser.add_argument(
+        '--visualization-output-dir',
+        type=str,
+        default="./workdir/attention_visualization/llava-1.5-7b-hf",
+        # default=None,
+        help='Directory to save visualization outputs',
     )
 
     return parser.parse_args()
@@ -173,4 +202,9 @@ def defaultargs():
 
 if __name__ == "__main__":
     args = defaultargs()
-    run_eval(args)
+
+    for rate in np.arange(0.0, 1.0, 0.1):
+        args.discard_rate = round(rate, 1)
+        print(f'================ Discard Rate: {args.discard_rate} ================')
+        run_eval(args)
+        gc.collect()

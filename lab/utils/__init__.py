@@ -8,7 +8,10 @@ from .plot import (
     plot_performance2,
     plot_from_csv,
     plot_multi_performance,
-    plot_acc_flops
+    plot_acc_flops,
+    plot_lmms_eval_res,
+    plot_lmms_eval_norm_res,
+    visualize_attention,
 )
 
 from .datasets import(

@@ -2,11 +2,14 @@ import os
 import json
 import re
 import csv
+import torch
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 
 
 from typing import List, Tuple, Optional
+from matplotlib.colors import LogNorm
 
 
 def plot_performance(
@@ -405,8 +408,24 @@ def plot_lmms_eval_res(
 
 def plot_lmms_eval_norm_res(
     dirs_and_files_regex: List[Tuple[str, str]] = [
-        ("./workdir/lmms-eval", r"llava_1.5_7b_fp16_discard-([\d.]+)_seed-(\d+)_layer-0", "llava-hf__llava-1.5-7b-hf"),
-        ("./workdir/lmms-eval", r"qwen_2.5_vl_7b_bf16_discard-([\d.]+)_seed-(\d+)_layer-0", "Qwen__Qwen2.5-VL-7B-Instruct"),
+        (
+            "./workdir/lmms-eval",
+            r"llava_1.5_7b_fp16_discard-([\d.]+)_seed-(\d+)_layer-0",
+            r".+_results\.json$",
+            "llava-hf__llava-1.5-7b-hf",
+        ),
+        (
+            "./workdir/lmms-eval",
+            r"qwen_2.5_vl_7b_bf16_discard-([\d.]+)_seed-(\d+)_layer-0",
+            r".+_results\.json$",
+            "Qwen__Qwen2.5-VL-7B-Instruct",
+        ),
+        (
+            "./workdir/lmms-eval",
+            r"intern_3.5_vl_hf_8b_bf16_discard-([\d.]+)_seed-(\d+)_layer-0",
+            r".+_results\.json$",
+            "OpenGVLab__InternVL3_5-8B-HF",
+        ),
     ],
     save_path: str = "./workdir/lmms-eval/llava_1.5_7b_fp16_discard_norm.png",
     title: str = "Random Discard Cognition Performance",
@@ -442,7 +461,8 @@ def plot_lmms_eval_norm_res(
 
         second_dir_regex = dir_and_file[1]
         second_dir_pattern = re.compile(second_dir_regex)
-        file_pattern = re.compile(r".+_results\.json$")
+        file_regex = dir_and_file[2]
+        file_pattern = re.compile(file_regex)
 
         for second_dir_name in os.listdir(first_dir):
             match = second_dir_pattern.match(second_dir_name)
@@ -450,7 +470,7 @@ def plot_lmms_eval_norm_res(
                 continue
             if int(match.group(2)) not in seed_set:
                 continue
-            second_dir = os.path.join(first_dir, second_dir_name, dir_and_file[2])
+            second_dir = os.path.join(first_dir, second_dir_name, dir_and_file[3])
             if not os.path.isdir(second_dir):
                 continue
             for file_name in os.listdir(second_dir):
@@ -498,25 +518,121 @@ def plot_lmms_eval_norm_res(
     plt.savefig(save_path)
 
 
+def visualize_attention(
+    multihead_attention: torch.Tensor,
+    output_path: str = None,
+    title: str = "Layer 5",
+    pool_kernel_size: int = 10,
+):
+    # Assuming the input is a numpy array of shape (1, num_heads, n_tokens, n_tokens)
+    # First, we average the attention scores over the multiple heads
+    averaged_attention = torch.mean(
+        multihead_attention,
+        axis=1,
+    )[0].float()# Shape: (n_tokens, n_tokens)
+
+    # pooling the attention scores with stride pool_kernel_size
+    averaged_attention = torch.nn.functional.avg_pool2d(
+        averaged_attention.unsqueeze(0).unsqueeze(0),
+        kernel_size=pool_kernel_size,
+        stride=pool_kernel_size,
+    ).squeeze(0).squeeze(0)
+
+    if output_path is not None:
+        cmap = plt.cm.get_cmap("viridis")
+        plt.figure(figsize=(5, 5),dpi=400)
+
+        # Log normalization
+        log_norm = LogNorm(vmin=0.0007, vmax=averaged_attention.max())
+
+        # set the x and y ticks to 20x of the original
+        ax = sns.heatmap(
+            averaged_attention,
+            cmap=cmap,  # custom color map
+            norm=log_norm,
+            # cbar_kws={'label': 'Attention score'},
+        )
+
+        # replace the x and y ticks with string
+        x_ticks = [str(i * pool_kernel_size) for i in range(0,averaged_attention.shape[0])]
+        y_ticks = [str(i * pool_kernel_size) for i in range(0,averaged_attention.shape[0])]
+        ax.set_xticks([i for i in range(0,averaged_attention.shape[0])])
+        ax.set_yticks([i for i in range(0,averaged_attention.shape[0])])
+        ax.set_xticklabels(x_ticks)
+        ax.set_yticklabels(y_ticks)
+
+        # change the x tinks font size
+        plt.xticks(fontsize=3)
+        plt.yticks(fontsize=3)
+
+        # make y label vertical
+        plt.yticks(rotation=0)
+        plt.xticks(rotation=90)
+
+        plt.title(title)
+        # tight layout
+        plt.savefig(output_path, bbox_inches='tight')
+
+    top_five_attn = []
+    for row in averaged_attention:
+        # Use torch.topk to get the top 5 values and their indices
+        top_values, top_indices = torch.topk(row, 5 if row.shape[-1] >=5 else row.shape[-1])
+        # Convert to lists and append to the overall list
+        top_five_layer_attn = torch.stack((top_indices, top_values), dim=-1)
+        top_five_attn.append(top_five_layer_attn)
+
+    return torch.stack(top_five_attn), averaged_attention
+
+
 if __name__ == "__main__":
     # plot_lmms_eval_res()
+    # plot_lmms_eval_norm_res(
+    #     save_path="./workdir/lmms-eval/intern_llava_qwen_discard_cognition_norm.png",
+    #     title="Random Discard Cognition Performance",
+    #     x_label="Discard Rate",
+    #     y_label="MME Cognition Score",
+    #     perf_keys=["results", "mme", "mme_cognition_score,none"],
+    #     seed_list=[i for i in range(1, 22, 2)],
+    #     x_range=(0.00, 0.95),
+    #     y_range=(200.0, 700.0),
+    # )
+    # plot_lmms_eval_norm_res(
+    #     save_path="./workdir/lmms-eval/intern_llava_qwen_discard_perception_norm.png",
+    #     title="Random Discard Perception Performance",
+    #     x_label="Discard Rate",
+    #     y_label="MME Perception Score",
+    #     perf_keys=["results", "mme", "mme_perception_score,none"],
+    #     seed_list=[i for i in range(1, 22, 2)],
+    #     x_range=(0.00, 0.95),
+    #     y_range=(600.0, 1800.0),
+    # )
     plot_lmms_eval_norm_res(
-        save_path="./workdir/lmms-eval/llava_qwen_discard_cognition_norm.png",
-        title="Random Discard Cognition Performance",
+        dirs_and_files_regex=[
+            (
+                "./workdir/lm-eval",
+                r"mistral_v0.3_7b_bf16_discard-([\d.]+)_seed-(\d+)_layer-0",
+                r"^results.*\.json$",
+                "__home__jovyan__nas__yrc__model__mistralai__Mistral-7B-Instruct-v0.3",
+            ),
+            (
+                "./workdir/lm-eval",
+                r"qwen2_7b_bf16_discard-([\d.]+)_seed-(\d+)_layer-0",
+                r"^results.*\.json$",
+                "__home__jovyan__nas__yrc__model__Qwen__Qwen2.5-7B",
+            ),
+            (
+                "./workdir/lm-eval",
+                r"qwen3_8b_bf16_discard-([\d.]+)_seed-(\d+)_layer-0",
+                r"^results.*\.json$",
+                "__home__jovyan__nas__yrc__model__Qwen__Qwen3-8B",
+            ),
+        ],
+        save_path="./workdir/lm-eval/mistral_qwen2_qwen3_discard_mmlu_norm.png",
+        title="Random Discard MMLU Performance",
         x_label="Discard Rate",
-        y_label="MME Cognition Score",
-        perf_keys=["results", "mme", "mme_cognition_score,none"],
-        seed_list=[i for i in range(1, 16, 2)],
+        y_label="Massive Multitask Language Understanding Accuracy",
+        perf_keys=["results", "mmlu", "acc,none"],
+        seed_list=[i for i in range(1, 22, 2)],
         x_range=(0.00, 0.95),
-        y_range=(200.0, 700.0),
-    )
-    plot_lmms_eval_norm_res(
-        save_path="./workdir/lmms-eval/llava_qwen_discard_perception_norm.png",
-        title="Random Discard Perception Performance",
-        x_label="Discard Rate",
-        y_label="MME Perception Score",
-        perf_keys=["results", "mme", "mme_perception_score,none"],
-        seed_list=[i for i in range(1, 16, 2)],
-        x_range=(0.00, 0.95),
-        y_range=(600.0, 1800.0),
+        y_range=(0.00, 0.95),
     )
